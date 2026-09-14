@@ -1,0 +1,118 @@
+{
+  "api_key": "IVY26-8E90A24D8548",
+  "candidate": {
+    "name": "Gaurav Mahor",
+    "email": "gaurav.20233127@mnnit.ac.in",
+    "repo_url": "https://github.com/70Gaurav61/ivy-homes",
+    "demo_url": "https://ivy-homes-jade.vercel.app"
+  },
+  "answers": {
+    "total_listing_records": 3800,
+    "unique_properties": 3515,
+    "active_listings": 2998,
+    "corrupt_listing_ids": [],
+    "total_monthly_rent": 5184200,
+    "avg_price_per_sqft_2bhk": 18222.02,
+    "costliest_project": {
+      "project_id": "P30394",
+      "price_max_inr": 99.9
+    },
+    "listings_last_7_days": 128,
+    "fake_listing_ids": [],
+    "projects_with_wrong_listing_count": 317
+  },
+  "findings": [
+    {
+      "endpoint": "*",
+      "category": "auth",
+      "documented": "Append the API key as an api_key query parameter on every request.",
+      "actual": "The server returns HTTP 401 with message 'send your key in the X-API-Key request header, not as a query parameter.' The key must be sent as a header.",
+      "how_found": "First request using the documented query-param style returned 401 with that exact message.",
+      "impact": "Every request in the documented style fails authentication entirely.",
+      "evidence": []
+    },
+    {
+      "endpoint": "/auth/login",
+      "category": "auth",
+      "documented": "Response contains field 'token', expires_in: 86400 (24 hours). 'There is no refresh flow.'",
+      "actual": "Response contains 'access_token' (not 'token'), expires_in: 900 (15 minutes), plus 'refresh_token' and 'refresh_url: /auth/refresh'. A refresh flow exists.",
+      "how_found": "Inspected the raw login response body. expires_in was 900, not 86400. refresh_token and refresh_url fields were present.",
+      "impact": "Sessions documented as lasting 24h actually expire in 15 minutes. Apps not implementing the undocumented refresh flow will stop working mid-session.",
+      "evidence": []
+    },
+    {
+      "endpoint": "/auth/refresh",
+      "category": "undocumented_endpoint",
+      "documented": "Not documented. Docs explicitly state 'There is no refresh flow.'",
+      "actual": "POST /auth/refresh accepts {refresh_token: <token>} and returns a new access_token. This endpoint exists and works.",
+      "how_found": "Found refresh_url field in the login response pointing to /auth/refresh.",
+      "impact": "Developers reading only the docs would not know to implement token refresh and their sessions would expire after 15 minutes.",
+      "evidence": []
+    },
+    {
+      "endpoint": "/v1/listings",
+      "category": "pagination",
+      "documented": "Maximum limit is 200. Response shape: {total, page, page_size, results}.",
+      "actual": "Maximum limit enforced is 50 — sending limit=200 returns only 50 records. Response shape: {limit, offset, count, total, has_more, results}. Fields 'page' and 'page_size' do not appear.",
+      "how_found": "Sent GET /v1/listings?limit=200 and received a response with 'count':50 and 'limit':50, with has_more:true.",
+      "impact": "Code relying on the documented 200-record limit would page incorrectly and miss data. Code expecting page/page_size fields would break.",
+      "evidence": []
+    },
+    {
+      "endpoint": "/v1/listings",
+      "category": "completeness",
+      "documented": "Returns only active listings. 'Inactive, expired and withdrawn listings are excluded server side.'",
+      "actual": "The response includes listings where is_live is false — inactive listings are returned alongside active ones.",
+      "how_found": "Counted listings with is_live=false in the full retrieved dataset; found records with is_live:false in /v1/listings.",
+      "impact": "Apps trusting the docs would show inactive listings to users without filtering them out.",
+      "evidence": []
+    },
+    {
+      "endpoint": "/v1/analytics/summary",
+      "category": "missing_endpoint",
+      "documented": "Returns pre-computed aggregates: city, total_listings, median_price, median_price_per_sqft, by_locality, by_bhk.",
+      "actual": "Returns HTTP 404 with {\"detail\": \"Not Found\"}. The endpoint is not implemented.",
+      "how_found": "Called GET /v1/analytics/summary after authentication; received 404.",
+      "impact": "Any dashboard or insights screen relying on this endpoint receives no data.",
+      "evidence": []
+    },
+    {
+      "endpoint": "/v1/favourites",
+      "category": "missing_endpoint",
+      "documented": "GET /v1/favourites returns saved listings for the logged-in user. POST /v1/favourites adds a listing. DELETE /v1/favourites/{id} removes one.",
+      "actual": "All requests to /v1/favourites return HTTP 404. The endpoint is not implemented.",
+      "how_found": "Called GET /v1/favourites with a valid Bearer token; received 404.",
+      "impact": "Saved-listings feature cannot use the API; must fall back to client-side storage.",
+      "evidence": []
+    },
+    {
+      "endpoint": "/v1/projects",
+      "category": "units",
+      "documented": "price_min and price_max are in rupees (integer).",
+      "actual": "Observed values like 80.0, 38.5, 3.22 — these are clearly lakhs (×100,000), not rupees. A value of 3.22 in rupees would make no sense for a property project.",
+      "how_found": "Compared price_min/price_max values in /v1/projects responses with prices in /v1/listings for the same properties. Project prices were ~100,000x smaller than expected.",
+      "impact": "Displaying raw price_min/price_max as rupees shows wildly incorrect prices. Must multiply by 100,000 (1 lakh) before display.",
+      "evidence": []
+    },
+    {
+      "endpoint": "/v1/projects",
+      "category": "consistency",
+      "documented": "total_listings 'is recomputed whenever a listing is added or withdrawn, so it always agrees with what GET /v1/listings?project_id=... returns.'",
+      "actual": "Many projects report a total_listings that does not match the actual count of listings with that project_id in the retrievable /v1/listings dataset.",
+      "how_found": "Fetched all listings and all projects, grouped listings by project_id, and compared counts to each project's reported total_listings.",
+      "impact": "total_listings cannot be trusted as a count of current listings. Users and apps relying on it will see wrong numbers.",
+      "evidence": []
+    },
+    {
+      "endpoint": "/v1/listing/{id}",
+      "category": "consistency",
+      "documented": "Every listing in /v1/listings should be individually retrievable via /v1/listing/{id}.",
+      "actual": "HTTP 404 returned for ZER-3003685: \"Not Found\". The ID appears normally in /v1/listings but 404s on the individual endpoint.",
+      "how_found": "Clicked a listing row; the detail page 404d. Confirmed via the ghost-listing probe on the Insights screen.",
+      "impact": "Detail pages for these listings are broken. May indicate phantom records in the collection index.",
+      "evidence": [
+        "ZER-3003685"
+      ]
+    }
+  ]
+}
