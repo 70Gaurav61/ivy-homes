@@ -14,6 +14,12 @@ A web frontend for the Ivy Homes property API, deployed on Vercel.
 
 Log in with `demo1@ivy.homes` (or demo2/demo3) using the password from your registration email, both locally and on Vercel.
 
+##### Before hitting the Saved (📊 Insights)UI from sidebar.
+-> hit Listings from sidebar
+-> hit to rentals from sidebar
+-> hit to projects from sidebar 
+As these load the data from apis and use it in insights page.
+
 ---
 
 ## What Works
@@ -91,6 +97,7 @@ The hypotheses that did not pan out tell us more about how I think than the ones
 
 - claude (AI-assisted coding) for the bulk of the implementation
 - Postman for initial API exploration
-- Antigravity as IDE and terminal
+- Antigravity IDE and terminal
+- Vercel for deployement
 
 ---
